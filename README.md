@@ -26,13 +26,9 @@ There is a Jupyter notebook "Tutorial ESP prediction.ipynb" in the folder "code"
 The listed packages can be installed using micromamba (or conda or anaconda) and pip as follows:
 
 ```bash
-micromamba create -n esp -c conda-forge pandas==1.3.1 python=3.8 jupyter  numpy==1.23.1 fair-esm==0.4.0 py-xgboost=1.3.3 rdkit=2022.09.5
-micromamba activate esp
-micromamba remove py-xgboost
+conda create -n esp -c conda-forge pandas==1.3.1 python=3.8 jupyter  numpy==1.23.1 fair-esm==0.4.0 py-xgboost=1.3.3 rdkit=2022.09.5
+conda activate esp
+conda remove py-xgboost
 pip install xgboost
 ```
-You can use `conda` instead of `micromamba`. This method is tested on Macbook pro 2021 Intel Chip on 14.02.2024.
-
-## Problems/Questions
-If you face any issues or problems, please open an issue.
 
