@@ -3,8 +3,6 @@ import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import Crippen
 from rdkit.Chem import Descriptors
-from rdkit.Chem import AllChem
-from rdkit import DataStructs
 import shutil
 import pickle
 import os
@@ -16,7 +14,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 import warnings
 warnings.filterwarnings("ignore")
 
-df_metabolites = pd.read_pickle(join("..", "data", "additional_data", "all_substrates.pkl"))
 
 save_folder = join("..", "data", "temp_met", "GNN_input_data")
 
@@ -30,18 +27,8 @@ def metabolite_preprocessing(metabolite_list):
     for ind in df_met.index:
         df_met["ID"][ind] = "metabolite_" + str(ind)
         met = df_met["metabolite"][ind]
-        if type(met) != str:
-            df_met["type"][ind] = "invalid"
-            print(".......Metabolite string '%s' could be neither classified as a valid KEGG ID, InChI string or SMILES string." % met)
-        elif is_KEGG_ID(met):
-            df_met["type"][ind] = "KEGG"
-        elif is_InChI(met):
-            df_met["type"][ind] = "InChI"
-        elif is_SMILES(met):
-            df_met["type"][ind] = "SMILES"
-        else:
-            df_met["type"][ind] = "invalid"
-            print(".......Metabolite string '%s' could be neither classified as a valid KEGG ID, InChI string or SMILES string" % met)
+        df_met["type"][ind] = "SMILES"
+        
     df_met = calculate_atom_and_bond_feature_vectors(df_met)
     N_max = maximal_number_of_atoms(df_met = df_met)
     df_met = calculate_input_matrices(df_met = df_met, N_max = 70)
@@ -102,39 +89,6 @@ def maximal_number_of_atoms(df_met):
         print(".......The biggest molecule has over 70 atoms (%s). This will slow down the process of calculating the metabolite representations." % N_max)
     return(N_max)
 
-def is_KEGG_ID(met):
-    #a valid KEGG ID starts with a "C" or "D" followed by a 5 digit number:
-    if len(met) == 6 and met[0] in ["C", "D"]:
-        try:
-            int(met[1:])
-            return(True)
-        except: 
-            pass
-    return(False)
-
-def is_SMILES(met):
-    m = Chem.MolFromSmiles(met,sanitize=False)
-    if m is None:
-        return(False)
-    else:
-        try:
-            Chem.SanitizeMol(m)
-        except:
-            print('.......Metabolite string "%s" is in SMILES format but has invalid chemistry' % met)
-            return(False)
-    return(True)
-
-def is_InChI(met):
-    m = Chem.inchi.MolFromInchi(met, sanitize=False)
-    if m is None:
-        return(False)
-    else:
-        try:
-            Chem.SanitizeMol(m)
-        except:
-            print('.......Metabolite string "%s" is in InChI format but has invalid chemistry' % met)
-            return(False)
-    return(True)
 
 
 #Create dictionaries for the bond features:
@@ -208,9 +162,6 @@ dic_chirality = {'CHI_TETRAHEDRAL_CCW': np.array([1,0,0]), 'CHI_TETRAHEDRAL_CW':
 
 def calculate_atom_and_bond_feature_vectors(df_met):
     df_met["successfull"] = True
-    df_met["metabolite_similarity_score"] = np.nan
-    df_met["metabolite_identical_ID"] = np.nan
-    df_met["#metabolite in training set"] = np.nan
     df_met["number_atoms"] = 0
     df_met["LogP"], df_met["MW"] = np.nan, np.nan
     #Creating a temporary directory to save data for metabolites
@@ -227,33 +178,12 @@ def calculate_atom_and_bond_feature_vectors(df_met):
 
     for ind in df_met.index:
         ID, met_type, met = df_met["ID"][ind], df_met["type"][ind], df_met["metabolite"][ind]
-        if met_type == "invalid":
-                mol = None
-        elif met_type == "KEGG":
-            try:
-                mol = Chem.MolFromMolFile(join("..", "data", "mol-files",  met + ".mol"))
-            except:
-                print(".......Mol file for KEGG ID '%s' is not available. Try to enter InChI string or SMILES for the metabolite instead." % met)
-                mol = None
-        elif met_type == "InChI":
-            mol = Chem.inchi.MolFromInchi(met)
-        elif met_type == "SMILES":
-            mol = Chem.MolFromSmiles(met)
-
-        if mol is None:
-            df_met["successfull"][ind] = False
-        else:
-            df_met["number_atoms"][ind] = mol.GetNumAtoms()
-            df_met["MW"][ind] = Descriptors.ExactMolWt(mol)
-            df_met["LogP"][ind] = Crippen.MolLogP(mol)
-            calculate_atom_feature_vector_for_mol(mol, ID)
-            calculate_bond_feature_vector_for_mol(mol, ID)
-            df_met["metabolite_similarity_score"][ind], df_met["metabolite_identical_ID"][ind] = calculate_metabolite_similarity(df_metabolites = df_metabolites,
-                                                                             mol = mol)
-            if not pd.isnull(df_met["metabolite_identical_ID"][ind]):
-                df_met["#metabolite in training set"][ind] = list(df_count_met["count"].loc[df_count_met["ID"] == df_met["metabolite_identical_ID"][ind]])[0]
-            else:
-                df_met["#metabolite in training set"][ind] = 0
+        mol = Chem.MolFromSmiles(met)
+        df_met["number_atoms"][ind] = mol.GetNumAtoms()
+        df_met["MW"][ind] = Descriptors.ExactMolWt(mol)
+        df_met["LogP"][ind] = Crippen.MolLogP(mol)
+        calculate_atom_feature_vector_for_mol(mol, ID)
+        calculate_bond_feature_vector_for_mol(mol, ID)
     return(df_met)
                         
                         
@@ -482,18 +412,3 @@ class GNN(nn.Module):
         h = torch.matmul(self.Ones1_N, torch.transpose(H, dim0 =1, dim1 =2))
         h = h.view((-1,self.D))
         return(h)
-
-def calculate_metabolite_similarity(df_metabolites, mol):
-    fp = Chem.RDKFingerprint(mol)
-    
-    fps = list(df_metabolites["Sim_FP"])
-    IDs = list(df_metabolites["ID"])
-    similarity_vector = np.zeros(len(fps))
-    for i in range(len(fps)):
-        similarity_vector[i] = DataStructs.FingerprintSimilarity(fp,fps[i])
-    if max(similarity_vector) == 1:
-        k = np.argmax(similarity_vector)
-        ID = IDs[k]
-    else:
-        ID = np.nan
-    return(max(similarity_vector), ID)
