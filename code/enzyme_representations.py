@@ -30,7 +30,7 @@ def calcualte_esm1b_vectors(enzyme_list):
 	for ind in df_enzyme.index:
 		batch_labels, batch_strs, batch_tokens = batch_converter([(df_enzyme["ID"][ind], df_enzyme["model_input"][ind])])
 		with torch.no_grad():
-		    results = model(batch_tokens, repr_layers=[33])
+			results = model(batch_tokens, repr_layers=[33])
 		df_enzyme["enzyme rep"][ind] = results["representations"][33][0, 1 : len(df_enzyme["model_input"][ind]) + 1].mean(0).numpy()
 	return(df_enzyme)
 

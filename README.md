@@ -27,7 +27,7 @@ The listed packages can be installed using micromamba (or conda or anaconda) and
 
 ```bash
 conda create -n esp -c conda-forge pandas==1.3.1 python=3.8 jupyter  numpy==1.23.1 fair-esm==0.4.0 py-xgboost=1.3.3 rdkit=2022.09.5
-conda activate esp
+activate esp
 conda remove py-xgboost
 pip install xgboost
 ```
